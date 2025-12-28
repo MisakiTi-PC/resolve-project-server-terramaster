@@ -30,12 +30,12 @@
    - `POSTGRES_LOCATION` 例: `/nasのフォルダパス:/var/lib/postgresql/data`
    - `BACKUP_LOCATION` 例: `/nasのフォルダパス/...:/backups`
 
-   > [!NOTE]
-   macvlan : ネットワーク設定、設定必須。  
-   database : DBへのログイン情報、セキュリティ的に変更しといたほうが吉。  
-   backup : バックアップ頻度、好みに合わせてどうぞ。
-   POSTGRES_LOCATION はSSD推奨
-   設定したフォルダパスにフォルダが存在しないと起動でこけるので注意
+> [!NOTE]
+> macvlan : ネットワーク設定、設定必須。  
+> database : DB へのログイン情報。セキュリティ的に変更推奨。  
+> backup : バックアップ頻度は好みに合わせてどうぞ。  
+> POSTGRES_LOCATION は SSD 推奨。設定したフォルダパスにフォルダが存在しないと起動時にエラーになります。
+
 
    ```yaml
    macvlan: &macvlan-environment
