@@ -1,176 +1,105 @@
-# Davinci Resolve Project Server
+# Davinci Resolve Project Server (Terramaster/NAS 向けフォーク)
 
-![Lint](https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server/actions/workflows/lint.yml/badge.svg)
-![Healthcheck](https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server/actions/workflows/stack-healthcheck.yml/badge.svg)
-![Docker Build](https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server/actions/workflows/docker.yml/badge.svg)
+## 概要
 
-Simple Resolve project server with automatic backups
+- Docker で動く Resolve プロジェクトサーバー。PostgreSQL 13 と自動バックアップの最小構成。
+- NAS 向けに macvlan 前提の `docker-compose.yml` に統一。
+- サンプル値は環境のインターフェース/サブネット/ゲートウェイ/固定 IP に置き換えて使用。
+- オリジナル: <https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server>
 
-## Table of Contents
+## オリジナルからの主な変更
 
-- [Davinci Resolve Project Server](#davinci-resolve-project-server)
-  - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
-    - [Features](#features)
-  - [Configuration](#configuration)
-    - [Database](#database)
-    - [Backups](#backups)
-    - [PGAdmin](#pgadmin)
-    - [Volume Locations](#volume-locations)
-  - [Installation](#installation)
-    - [QNAP Installation](#qnap-installation)
-    - [Synology](#synology)
-    - [Linux](#linux)
-  - [Different PostgreSQL versions](#different-postgresql-versions)
-    - [Setting up a PostgreSQL 9.5 or 11 Project Server](#setting-up-a-postgresql-95-or-11-project-server)
-  - [Thanks](#thanks)
+- PGAdmin とヘルパーコンテナを削除（軽量化）
+- macvlan 設定をデフォルト採用
+- GitHub Actions / CI を削除（macvlan が CI で使用不可のため）
 
-## Introduction
+## 前提
 
-There are a lot of ways to host a Resolve project server, but each of them has their own set of issues. The official project server requires manual backups, and other options can be complicated for those that don't have access to an IT team. Hopefully this is a more reliable and simpler solution for smaller teams!
+- TerraMaster製 NAS（Docker Manager利用可能なモデル）  
+  ※ F4-425 Plus で動作確認済み
+- 固定IP が未使用であること
+- macvlan がネットワークで使用可能であること
 
-### Features
+## 使い方
 
-- **Lightweight** - Docker based, so doesn't require a full macOS or Windows machine or VM.
-- **Platform Independent** - can be installed on Windows, Mac, Linux, QNAP, Synology, RPi, really anything that can run Docker.
-- **Compatible with Resolve's existing backup/restore functions** - All backup files use the standard Resolve \*.backup file syntax, and can be restored from the Resolve UI
-- **Built-in PGAdmin Server** - PGAdmin is a tool for administering a PostgreSQL Server, and is helpful for diagnosing problems and migrating/updating entire servers
+1. `docker-compose.yml` の変数を環境に合わせる。
+   - `RESOLVE_MACVLAN_PARENT` 例: `eth0`
+   - `RESOLVE_MACVLAN_SUBNET` 例: `192.168.100.0/24`
+   - `RESOLVE_MACVLAN_GATEWAY` 例: `192.168.100.1`
+   - `RESOLVE_PG_IP` 例: `192.168.100.50`（未使用の固定 IP）
+   - `POSTGRES_LOCATION` 例: `/nasのフォルダパス:/var/lib/postgresql/data`
+   - `BACKUP_LOCATION` 例: `/nasのフォルダパス/...:/backups`
 
-## Configuration
+   > [!NOTE]
+   macvlan : ネットワーク設定、設定必須。  
+   database : DBへのログイン情報、セキュリティ的に変更しといたほうが吉。  
+   backup : バックアップ頻度、好みに合わせてどうぞ。
+   POSTGRES_LOCATION はSSD推奨
+   設定したフォルダパスにフォルダが存在しないと起動でこけるので注意
 
-There are a few things we'll need to edit at the top of the docker-compose.yml file to configure our installation:
+   ```yaml
+   macvlan: &macvlan-environment
+     RESOLVE_MACVLAN_PARENT: &macvlan-parent "eth0"
+     RESOLVE_MACVLAN_SUBNET: &macvlan-subnet "192.168.100.0/24"
+     RESOLVE_MACVLAN_GATEWAY: &macvlan-gateway "192.168.100.1"
+     RESOLVE_PG_IP: &pg-ip "192.168.100.50"
+   database: &db-environment
+     POSTGRES_DB: &pg-db databases
+     POSTGRES_USER: &pg-user postgres
+     POSTGRES_PASSWORD: DaVinci
+     TZ: Asia/Tokyo
+     POSTGRES_LOCATION: &db-location "/Volume1/Docker/Resolve_DB:/var/lib/postgresql/data"
+   backup: &backup-environment
+     SCHEDULE: "@daily"
+     BACKUP_KEEP_DAYS: 7
+     BACKUP_KEEP_WEEKS: 4
+     BACKUP_KEEP_MONTHS: 6
+     BACKUP_KEEP_MINS: 0
+     BACKUP_LOCATION: &bk-location "/Volume2/project_backup/backups:/backups"
+   ```
 
-```yaml
----
-version: "3.8"
-x-common:
-  database: &db-environment
-    POSTGRES_DB: database
-    POSTGRES_USER: &pg-user postgres
-    POSTGRES_PASSWORD: DaVinci
-    TZ: America/Chicago
-    POSTGRES_LOCATION: &db-location "???:/var/lib/postgresql/data"
-  backup: &backup-environment
-    SCHEDULE: "@daily"
-    BACKUP_KEEP_DAYS: 7
-    BACKUP_KEEP_WEEKS: 4
-    BACKUP_KEEP_MONTHS: 6
-    BACKUP_LOCATION: &bk-location "???:/backups"
-  admin: &admin-environment
-    PGADMIN_DEFAULT_EMAIL: admin@admin.com
-    PGADMIN_DEFAULT_PASSWORD: root
-    PGADMIN_PORT: &pgadmin-port "3001:80"
-```
+2. DockerManagerを開き変更したymlファイルの中身をコピペ  
+   ![Docker Manager でプロジェクト作成](docker-manager-project.png)
+3. Davinciを開きネットワークタブからプロジェクトライブラリを追加を選択。先ほど設定した情報を入力  
+   ![DaVinci Resolve でライブラリを追加](resolve-add-library.png)
 
-### Database
+## 設定項目詳細
 
-To configure the server itself, we'll want to configure the environment variables below:
-| Environment Variable |Meaning|
-|---|---|
-| POSTGRES_DB | Name of your database. Name it whatever you like. |
-| POSTGRES_USER | Username you will use to connect to your database. The Resolve default is "postgres" |
-| POSTGRES_PASSWORD | Password you will use to connect to your database. The Resolve default is "DaVinci" |
-| TZ | Your timezone, here is [a list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)|
-| POSTGRES_LOCATION | Location your database will be stored. See [Volume Locations](#volume-locations) |
+- ネットワーク（macvlan）
 
-### Backups
+| 変数 | 例 | 説明 |
+| --- | --- | --- |
+| RESOLVE_MACVLAN_PARENT | eth0 | LAN1がeth0、LAN2がeth1 のはず |
+| RESOLVE_MACVLAN_SUBNET | 192.168.100.0/24 | コンテナ用サブネット |
+| RESOLVE_MACVLAN_GATEWAY | 192.168.100.1 | サブネットのゲートウェイ |
+| RESOLVE_PG_IP | 192.168.100.50 | PostgreSQL コンテナに割り当てる適当な固定IP（未使用のもの） |
 
-To configure the backups, we'll want to configure the variables below:
-| Environment Variable |Meaning|
-|---|---|
-| SCHEDULE | This is a [cron string](https://www.freeformatter.com/cron-expression-generator-quartz.html) for how often backups are created. can be "@daily", "@every 1h", etc |
-| BACKUP_KEEP_DAYS | Number of daily backups to keep before removal. |
-| BACKUP_KEEP_WEEKS | Number of weekly backups to keep before removal. |
-| BACKUP_KEEP_MONTHS | Number of monthly backups to keep before removal. |
-| BACKUP_LOCATION | Location your backups will be stored. See [Volume Locations](#volume-locations) |
+- PostgreSQL (database)
 
-### PGAdmin
+| 変数 | 例 | 説明 |
+| --- | --- | --- |
+| POSTGRES_DB | database | 作成するデータベース名 |
+| POSTGRES_USER | postgres | 接続ユーザー名（Resolve デフォルト） |
+| POSTGRES_PASSWORD | DaVinci | 接続パスワード（Resolve デフォルト） |
+| TZ | Asia/Tokyo | タイムゾーン |
+| POSTGRES_LOCATION | /Volume1/...:/var/lib/postgresql/data | DBの保存先（左がホストパス） |
 
-To configure PGAdmin, we'll want to configure the variables below:
-| Environment Variable |Meaning|
-|---|---|
-| PGADMIN_DEFAULT_EMAIL | Email used for PGAdmin login. Default is "admin@admin.com" |
-| PGADMIN_DEFAULT_PASSWORD | Password used for PGAdmin login. Default is "root" |
-| PGADMIN_PORT | String configuring port to expose PGAdmin on. Syntax is "YOUR_PORT:80" |
+- backup
 
-### Volume Locations
+| 変数 | 例 | 説明 |
+| --- | --- | --- |
+| SCHEDULE | @daily | 取得間隔（cron 形式） |
+| BACKUP_KEEP_DAYS | 7 | 日次バックアップ保持数 |
+| BACKUP_KEEP_WEEKS | 4 | 週次バックアップ保持数 |
+| BACKUP_KEEP_MONTHS | 6 | 月次バックアップ保持数 |
+| BACKUP_KEEP_MINS | 0 | 分単位の保持数（不要なら 0） |
+| BACKUP_LOCATION | /Volume2/...:/backups | バックアップ保存先（左がホストパス） |
 
-The location of your database and backups depend on what platform you are installing on. You will need the full path to the folder you want them stored in. On a QNAP NAS for example, if I wanted to use a folder called "Backups" inside a shared folder named "Videos" for my backups location, the path would be `/shares/Videos/Backups/`, and my `BACKUP_LOCATION` value would look like this:
+## LICENSE / CREDITS
 
-```yaml
-BACKUP_LOCATION: &bk-location "/shares/Videos/Backups/:/backups"
-```
+This repository remains under the MIT License.  
 
-On Ubuntu, if I wanted to use a folder named "database" in the home directory of the user named "johndoe" for my database location, the path would be `/home/johndoe/database/`, and my `POSTGRES_LOCATION` value would look like this:
+Credits:
 
-```yaml
-POSTGRES_LOCATION: &db-location "johndoe/database/:/var/lib/postgresql/data"
-```
-
-I recommend putting your database on an SSD, your access speed will be noticeably slower on a spinning drive.
-
-Once you have configured these settings, save your modified docker-compose.yml file and move on to installation!
-
-## Installation
-
-### QNAP Installation
-
-Installing on a QNAP NAS is relatively simple. One note, please put the database files on an SSD. You will thank me later
-
-1. If you don't already have it, install Container Station from the QNAP app store.
-2. In Container Station, click "Create", then click "Create Application"
-3. Name your application whatever you like (eg. ResolveServer)
-4. Copy/Paste your modified docker-compose.yml file, hit "Validate YAML" to test it, and if it passes, click "Create"
-5. Container Station will download the files it needs and start the app. Once it's done, you should be able to connect Resolve to the IP address of your QNAP using the database name and credentials
-
-### Synology
-
-See [this discussion](https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server/discussions/15#discussioncomment-4615278)
-
-### Linux
-
-1. Follow the [Docker installation instructions for your Linux distribution](https://docs.docker.com/engine/install/)
-2. Install [Docker Compose](https://docs.docker.com/compose/install/)
-3. Move your modified docker-compose.yml file to a folder on your Linux machine, then navigate to that folder in the terminal.
-4. Run:
-   `docker-compose up -d`
-5. Docker-compose will download the files it needs and start the app. Once it's done, you should be able to connect Resolve to the IP address of your Linux Server instance using the database name and credentials
-
-## Different PostgreSQL versions
-
-Generally, Resolve is not very tolerant of mismatched PostgreSQL versions. Resolve 18-20 use PostgreSQL 13, which is what this repository now defaults to. Resolve 17 and below use PostgreSQL 9.5. Unfortunately the major release 9.5 is EOL, and 9.5.4 in particular has a lot of vulnerabilities that make it insecure.
-Since most people are still using the default Resolve credentials for their server, security generally isn't the biggest concern, but if you are trying to secure your project server with an older version of Resolve, you will want to move to a supported version of PostgreSQL.
-
-Resolve 17 and below still use a legacy feature that has been removed in PostgreSQL 12, so the latest major version that is useable is 11, which will be maintained until November 9, 2023.
-
-### Setting up a PostgreSQL 9.5 or 11 Project Server
-
-To setup a PostgreSQL 9.5 or 11 server instead of 13, there are 2 lines that need to be changed in docker_compose.yml:
-
-```yaml
-services:
-  postgres:
-    image: postgres:13
-    ...
-  pgbackups:
-    image: prodrigestivill/postgres-backup-local:13
-    ...
-...
-```
-
-to the following:
-
-```yaml
-services:
-  postgres:
-    image: postgres:9.5
-    ...
-  pgbackups:
-    image: prodrigestivill/postgres-backup-local:9.5
-    ...
-...
-```
-
-## Thanks
-
--[prodrigestivill](https://github.com/prodrigestivill/) for his [PostgreSQL Backup docker image](https://github.com/prodrigestivill/docker-postgres-backup-local)
+- Original: <https://github.com/elliotmatson/Docker-Davinci-Resolve-Project-Server>
+- Backup image: <https://github.com/prodrigestivill/docker-postgres-backup-local>
