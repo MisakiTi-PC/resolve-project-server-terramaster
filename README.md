@@ -1,4 +1,4 @@
-# Davinci Resolve Project Server (Terramaster/NAS 向けフォーク)
+# Davinci Resolve Project Server (Terramaster/NAS 向け)
 
 ## 概要
 
@@ -58,7 +58,7 @@
      BACKUP_LOCATION: &bk-location "/Volume2/project_backup/backups:/backups"
    ```
 
-2. DockerManagerを開き変更したymlファイルの中身をコピペ  
+2. DockerManagerを開き、変更したymlファイルの中身をコピペ  
    ![Docker Manager でプロジェクト作成](docker-manager-project.png)
 3. Davinciを開きネットワークタブからプロジェクトライブラリを追加を選択。先ほど設定した情報を入力  
    ![DaVinci Resolve でライブラリを追加](resolve-add-library.png)
